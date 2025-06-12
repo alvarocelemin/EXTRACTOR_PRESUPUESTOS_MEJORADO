@@ -1,0 +1,10 @@
+{
+    "rangos_default": {
+        "mediciones": [4, 50],
+        "precios": [51, 100]
+    },
+    "regex_presets": {
+        "basico": "\\d+\\.\\d+",
+        "avanzado": "\\b(?:ud|m2)\\b"
+    }
+}

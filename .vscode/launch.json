@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "Debug CLI",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./core/cli.py",
+            "args": ["extraer", "sample.pdf"]
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+setup.py
+Core/__init__.py
+Core/cli.py
+Core/extractor.py
+Core/nlp_model.py
+extractor_presupuestos.egg-info/PKG-INFO
+extractor_presupuestos.egg-info/SOURCES.txt
+extractor_presupuestos.egg-info/dependency_links.txt
+extractor_presupuestos.egg-info/top_level.txt

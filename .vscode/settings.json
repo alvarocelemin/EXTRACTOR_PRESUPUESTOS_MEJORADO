@@ -1,0 +1,12 @@
+{
+  "python.pythonPath": "venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/venv/lib/python3.12/site-packages",
+    "${workspaceFolder}/src"
+  ],
+  "python.analysis.diagnosticMode": "workspace",
+  "python.languageServer": "Pylance",
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.autoImportCompletions": true
+}
+
