@@ -1,0 +1,5 @@
+2025-06-13 14:39:48,816 - WARNING - Tesseract OCR no está instalado. El procesamiento de PDFs escaneados no funcionará.
+2025-06-13 14:39:48,819 - INFO - Iniciando extracción de presupuesto.pdf
+2025-06-13 14:39:48,959 - INFO - Procesando páginas 1800-2547 de 2547
+2025-06-13 14:39:55,377 - INFO - Aplicando método de extracción por 'Anclas y Bloques'...
+2025-06-13 14:39:55,702 - INFO - Extracción completada en 6.89 segundos. Se procesaron 1234 partidas.

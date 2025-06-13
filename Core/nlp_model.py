@@ -1,12 +1,17 @@
+from typing import Dict  # Para type hints
 import spacy
-from spacy.training import Example
+from spacy.training.example import Example  # ¡Corregido!
 
 class NLPProcessor:
     def __init__(self, model_name: str = "es_core_news_md"):
         self.nlp = spacy.load(model_name)
-        self.nlp.add_pipe("entity_ruler").add_patterns([
+        # Configuración correcta de EntityRuler:
+        ruler = self.nlp.add_pipe("entity_ruler")
+        ruler.add_patterns([{"label": "MATERIAL", "pattern": [{"LOWER": "acero"}]}])  # Sintaxis fija
+                
+        """self.nlp.add_pipe("entity_ruler").add_patterns([
             {"label": "MATERIAL", "pattern": [{"LOWER": "acero"}]}
-        ])
+        ])"""
 
     def analyze_text(self, text: str) -> Dict:
         doc = self.nlp(text)
