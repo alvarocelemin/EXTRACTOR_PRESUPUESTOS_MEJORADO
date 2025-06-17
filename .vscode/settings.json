@@ -1,12 +1,11 @@
 {
-  "python.pythonPath": "venv/bin/python",
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}/venv/lib/python3.12/site-packages",
-    "${workspaceFolder}/src"
-  ],
-  "python.analysis.diagnosticMode": "workspace",
-  "python.languageServer": "Pylance",
-  "python.analysis.typeCheckingMode": "basic",
-  "python.analysis.autoImportCompletions": true
+    "python.pythonPath": "venv/bin/python",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.formatting.provider": "black",
+    "files.autoSave": "afterDelay",
+    "editor.formatOnSave": true,
+    "python.analysis.extraPaths": [
+        "."
+    ]
 }
-

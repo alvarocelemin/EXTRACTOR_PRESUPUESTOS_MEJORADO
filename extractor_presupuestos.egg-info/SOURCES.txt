@@ -7,3 +7,4 @@ extractor_presupuestos.egg-info/PKG-INFO
 extractor_presupuestos.egg-info/SOURCES.txt
 extractor_presupuestos.egg-info/dependency_links.txt
 extractor_presupuestos.egg-info/top_level.txt
+tests/test_extractor.py

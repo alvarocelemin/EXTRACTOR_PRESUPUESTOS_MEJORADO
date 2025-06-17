@@ -1,0 +1,10 @@
+setup.py
+./core/__init__.py
+./core/cli.py
+./core/extractor.py
+./core/nlp_model.py
+extractor.egg-info/PKG-INFO
+extractor.egg-info/SOURCES.txt
+extractor.egg-info/dependency_links.txt
+extractor.egg-info/top_level.txt
+tests/test_extractor.py

@@ -1,141 +1,141 @@
-"""
-Módulo principal de extracción - Versión 9.0 (Solución definitiva con mapeo de metadatos)
-"""
+# Core/extractor.py
 import re
-import fitz
-import sys
-import time
-import logging
 import pandas as pd
+from typing import Tuple, Dict, Optional
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+import pdfplumber
+import locale
+import logging
 
-# Configuración de logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-@dataclass
-class Configuracion:
-    """Configuración para el extractor de dos pasadas."""
-    paginas_mediciones: Tuple[int, int] = (1576, 2547)
-    paginas_presupuesto: Tuple[int, int] = (1576, 2547)
-    
-    columnas_finales: List[str] = field(default_factory=lambda: [
-        'CÓDIGO', 'DESCRIPCIÓN', 'UNIDAD', 'CANTIDAD', 'PRECIO UNITARIO', 'IMPORTE TOTAL'
-    ])
-    patrones: Dict = field(default_factory=lambda: {
-        # Patrón para encontrar un bloque completo en la sección de mediciones
-        'bloque_medicion': r'^\s*(?P<codigo>\d{2,3}\.\d{2}\.\d{2,3})\s+(?P<unidad>ud|m2|m3|kg|ml|m|l|uds)\s+(?P<texto>.*?)(?=\s*\d{2,3}\.\d{2}\.\d{2,3}\s+(?:ud|m2|m3|kg|ml|m|l|uds)|$)',
-        # Patrón para una fila de la tabla de resumen final
-        'fila_presupuesto': r'^\s*(?P<codigo>\d{2,3}\.\d{2}\.\d{2,3})\s+(?P<desc_corta>.+?)\s+(?P<cantidad>[\d.,]+)\s+(?P<precio>[\d.,]+)\s+(?P<importe>[\d.,]+)\s*$'
-    })
+class ExtractorPDF:
+    def __init__(self):
+        # Configurar locale para interpretación numérica
+        locale.setlocale(locale.LC_ALL, "es_ES.UTF-8")
+        self.logger = logging.getLogger(__name__)
 
-class ExtractorPresupuestos:
-    def __init__(self, config: Configuracion):
-        self.config = config
-        self.logger = logging.getLogger('ExtractorPresupuestos')
-        self.patrones_compilados = {k: re.compile(v, re.IGNORECASE | re.DOTALL | re.MULTILINE) for k, v in config.patrones.items()}
-
-    def _convertir_numero(self, texto_numero: str) -> float:
-        """Convierte un string como '1.234,56' a un float como 1234.56"""
+    def _limpiar_y_convertir_numeros(self, valor: str) -> float:
+        """Limpia y convierte strings numéricos con formato español"""
         try:
-            return float(str(texto_numero).replace('.', '').replace(',', '.'))
-        except (ValueError, AttributeError):
+            if not valor or not isinstance(valor, str):
+                return 0.0
+
+            # Eliminar puntos de miles y cambiar comas por puntos
+            valor_limpio = valor.replace(".", "").replace(",", ".")
+            return locale.atof(valor_limpio)
+        except (ValueError, AttributeError) as e:
+            self.logger.warning(
+                f"No se pudo convertir el valor numérico: {valor}. Error: {str(e)}"
+            )
             return 0.0
 
-    def _extraer_texto_rango(self, doc: fitz.Document, rango: Tuple[int, int]) -> str:
-        """Extrae texto de un rango de páginas específico."""
-        texto_parts = []
-        start, end = rango
-        for page_num in range(start - 1, min(end, len(doc))):
-            texto_parts.append(doc[page_num].get_text("text")) #type: ignore
-        return "\n".join(texto_parts)
+    def _procesar_linea(self, linea: str) -> Optional[Dict[str, object]]:
+        """
+        Procesa una línea de texto del PDF y extrae los campos
+        Retorna None si la línea no coincide con el patrón esperado
 
-    def procesar_pdf(self, ruta_pdf: Path) -> pd.DataFrame:
-        """Flujo principal de dos pasadas: mapeo de metadatos y extracción de datos."""
-        if not ruta_pdf.exists():
-            raise FileNotFoundError(f"Archivo no encontrado: {ruta_pdf}")
+        Args:
+            linea (str): Línea de texto del PDF
 
-        with fitz.open(str(ruta_pdf)) as doc:
-            # --- PASO 1: MAPEAR METADATOS (DESCRIPCIÓN Y UNIDAD) ---
-            self.logger.info(f"Paso 1: Mapeando metadatos desde págs {self.config.paginas_mediciones[0]}-{self.config.paginas_mediciones[1]}...")
-            texto_mediciones = self._extraer_texto_rango(doc, self.config.paginas_mediciones)
-            mapa_metadatos = {}
-            for match in self.patrones_compilados['bloque_medicion'].finditer(texto_mediciones):
-                datos = match.groupdict()
-                codigo = datos['codigo']
-                # Guardamos la descripción y la unidad extraída directamente del encabezado de la partida
-                mapa_metadatos[codigo] = {
-                    'DESCRIPCIÓN': datos['texto'].strip().split('\n')[0],
-                    'UNIDAD': datos['unidad'].upper()
-                }
-            self.logger.info(f"Se mapearon {len(mapa_metadatos)} metadatos.")
+        Returns:
+            Optional[Dict[str, object]]: Diccionario con los campos extraídos o None
+        """
+        # Expresión regular mejorada con manejo de espacios variables
+        patron = r"^(\d{2,3}\.\d{2}\.\d{2})\s+(.+?)\s+([A-Z]{2,4})\s+([\d\.,]+)\s+([\d\.,]+)\s+([\d\.,]+)$"
+        match = re.search(patron, linea.strip())
 
-            # --- PASO 2: EXTRAER DATOS NUMÉRICOS Y FUSIONAR ---
-            self.logger.info(f"Paso 2: Extrayendo datos finales desde págs {self.config.paginas_presupuesto[0]}-{self.config.paginas_presupuesto[1]}...")
-            texto_presupuesto = self._extraer_texto_rango(doc, self.config.paginas_presupuesto)
-            partidas_finales = []
-            for match in self.patrones_compilados['fila_presupuesto'].finditer(texto_presupuesto):
-                datos = match.groupdict()
-                codigo = datos['codigo']
-                
-                # Obtenemos los metadatos del mapa. Si no existen, usamos valores por defecto.
-                info_partida = mapa_metadatos.get(codigo, {'DESCRIPCIÓN': datos['desc_corta'], 'UNIDAD': 'UD'})
+        if not match:
+            return None
 
-                partida = {
-                    'CÓDIGO': codigo,
-                    'DESCRIPCIÓN': info_partida['DESCRIPCIÓN'],
-                    'UNIDAD': info_partida['UNIDAD'],
-                    'CANTIDAD': self._convertir_numero(datos['cantidad']),
-                    'PRECIO UNITARIO': self._convertir_numero(datos['precio']),
-                    'IMPORTE TOTAL': self._convertir_numero(datos['importe'])
-                }
-                partidas_finales.append(partida)
-            self.logger.info(f"Se extrajeron {len(partidas_finales)} partidas de la tabla de resumen.")
+        try:
+            return {
+                "CÓDIGO": match.group(1),
+                "DESCRIPCIÓN": match.group(2).strip(),
+                "UNIDAD": match.group(3),
+                "CANTIDAD": self._limpiar_y_convertir_numeros(match.group(4)),
+                "PRECIO_UNITARIO": self._limpiar_y_convertir_numeros(match.group(5)),
+                "IMPORTE_TOTAL": self._limpiar_y_convertir_numeros(match.group(6)),
+            }
+        except Exception as e:
+            self.logger.error(f"Error procesando línea: {linea}. Error: {str(e)}")
+            return None
 
-        if not partidas_finales:
-            raise ValueError("No se encontraron datos en la tabla de resumen. Revisa el rango de páginas y los patrones.")
+    def _validar_datos(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Valida y ajusta los tipos de datos numéricos"""
+        if df.empty:
+            return df
 
-        # --- PASO 3: CREAR Y ORDENAR EL DATAFRAME FINAL ---
-        df = pd.DataFrame(partidas_finales)
-        
-        # Lógica de ordenación natural
-        temp_cols = df['CÓDIGO'].str.split('.', expand=True).fillna('0')
-        df['c1'] = pd.to_numeric(temp_cols[0], errors='coerce')
-        df['c2'] = pd.to_numeric(temp_cols[1], errors='coerce')
-        df['c3'] = pd.to_numeric(temp_cols[2], errors='coerce')
-        df = df.sort_values(by=['c1', 'c2', 'c3']).drop(columns=['c1', 'c2', 'c3'])
-        
-        for col in self.config.columnas_finales:
-            if col not in df.columns: df[col] = None
-        
-        return df[self.config.columnas_finales].reset_index(drop=True)
+        # Asegurar que cantidades sean enteros cuando corresponda
+        df["CANTIDAD"] = df["CANTIDAD"].apply(lambda x: int(x) if x.is_integer() else x)
 
-def main():
-    # ... La función main permanece igual ...
-    if len(sys.argv) < 2:
-        print("Uso: python extractor.py <ruta_pdf>")
-        sys.exit(1)
-        
-    pdf_path = Path(sys.argv[1])
-    try:
-        config = Configuracion()
-        extractor = ExtractorPresupuestos(config)
-        df_final = extractor.procesar_pdf(pdf_path)
-        
-        output_path = pdf_path.with_suffix('.xlsx')
-        df_final.to_excel(output_path, index=False, sheet_name='PRESUPUESTO')
-        
-        print(f"\n✅ Extracción completada con éxito.")
-        print(f"📊 Archivo generado: {output_path}")
-        print(f"📝 Total de partidas: {len(df_final)}")
-        if 'IMPORTE TOTAL' in df_final.columns:
-            importe_total = pd.to_numeric(df_final['IMPORTE TOTAL'], errors='coerce').sum()
-            print(f"💰 Importe total: {importe_total:,.2f} €")
-            
-    except Exception as e:
-        logging.error(f"Error en ejecución: {e}", exc_info=True)
-        sys.exit(1)
+        # Redondear a 2 decimales para precios e importes
+        for col in ["PRECIO_UNITARIO", "IMPORTE_TOTAL"]:
+            df[col] = df[col].round(2)
 
-if __name__ == "__main__":
-    main()
+        return df
+
+    def extraer_datos_pdf(
+        self, pdf_path: str, paginas: Tuple[int, int]
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Método principal de extracción mejorado"""
+        datos_presupuesto = []
+        datos_descripciones = []
+
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                start, end = paginas
+                paginas_a_procesar = (
+                    pdf.pages[start - 1 : end] if end > 0 else pdf.pages[start - 1 :]
+                )
+
+                for pagina in paginas_a_procesar:
+                    texto = pagina.extract_text()
+                    if not texto:
+                        continue
+
+                    for linea in texto.split("\n"):
+                        datos = self._procesar_linea(linea)
+                        if datos:
+                            datos_presupuesto.append(datos)
+
+                            # Crear registro para NLP
+                            datos_descripciones.append(
+                                {
+                                    "CÓDIGO": datos["CÓDIGO"],
+                                    "DESCRIPCIÓN_COMPLETA": f"{datos['CÓDIGO']} {datos['DESCRIPCIÓN']}",
+                                    "UNIDAD": datos["UNIDAD"],
+                                }
+                            )
+        except Exception as e:
+            self.logger.error(f"Error al procesar PDF: {str(e)}")
+            raise
+
+        # Crear DataFrames y validar datos
+        df_presupuesto = (
+            pd.DataFrame(datos_presupuesto) if datos_presupuesto else pd.DataFrame()
+        )
+        df_descripciones = (
+            pd.DataFrame(datos_descripciones) if datos_descripciones else pd.DataFrame()
+        )
+
+        if not df_presupuesto.empty:
+            df_presupuesto = self._validar_datos(df_presupuesto)
+
+            # Verificar cálculos
+            df_presupuesto["IMPORTE_CALCULADO"] = (
+                df_presupuesto["CANTIDAD"] * df_presupuesto["PRECIO_UNITARIO"]
+            ).round(2)
+            inconsistencias = df_presupuesto[
+                abs(
+                    df_presupuesto["IMPORTE_TOTAL"]
+                    - df_presupuesto["IMPORTE_CALCULADO"]
+                )
+                > 0.1
+            ]
+
+            if not inconsistencias.empty:
+                self.logger.warning(
+                    f"Se encontraron {len(inconsistencias)} inconsistencias en importes"
+                )
+
+        return df_presupuesto, df_descripciones

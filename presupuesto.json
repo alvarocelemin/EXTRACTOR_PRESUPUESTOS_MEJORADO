@@ -1,0 +1,19 @@
+{
+    "conteo_materiales": {
+        "protección": 2588,
+        "cable": 320,
+        "bornas": 588,
+        "contactor": 2
+    },
+    "normativas_encontradas": [
+        "IEC",
+        "REBT",
+        "UNE-EN"
+    ],
+    "alertas_tecnicas": [
+        {
+            "código": "294.03.01",
+            "mensaje": "Se menciona 'contactor' sin parámetro técnico (ej: 4x25A)."
+        }
+    ]
+}
